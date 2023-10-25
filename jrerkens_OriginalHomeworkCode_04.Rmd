@@ -13,7 +13,7 @@ output:
 
 # Challenges!
 
-1. I always forget how finicky `ggplot2` is with manual prediction/confidence intervals when not using `geom_line()`. I had to look up the documentation.
+1. I always forget how finicky `ggplot2` is with manual prediction/confidence intervals when not using `geom_smooth()`. I had to look up the documentation.
 \
 \
 2. I originally made a variable called "warning" that would either be NULL or print out my warning message. I realized using `print()` would be more efficient and less confusing.
