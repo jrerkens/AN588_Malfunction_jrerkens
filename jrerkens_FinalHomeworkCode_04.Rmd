@@ -1,0 +1,228 @@
+---
+title: "Malfunction Original HW Code"
+author: "Jimmy Erkens"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+     toc: true
+     number_sections: true
+     toc_float: true
+     code_folding: show
+     theme: journal
+---
+
+# Challenges!
+
+1. I always forget how finicky `ggplot2` is with manual prediction/confidence intervals when not using `geom_smooth()`. I had to look up the documentation.
+\
+\
+2. I originally made a variable called "warning" that would either be NULL or print out my warning message. I realized using `print()` would be more efficient and less confusing.
+\
+\
+3. I wanted to work out `geom_ribbon()` instead of `geom_line()`, and my `predict()` function wasn't working out until I conceded on using `geom_line()`.
+
+# Post-Commentary Thoughts
+\
+\
+1. Thank you to Lia for the comments! I agree, my function comments are a bit much in some regards.
+\
+\
+2. I appreciated Alistair's function code; I understand how people from different coding backgrounds approach the same problems (the || and && are very non-R). I like test-casing a problem and troubleshooting other people's code, definitely a stimulating exercise.
+
+# Libaries
+
+```{r, libs, message = F}
+library(tidyverse)
+library(curl)
+```
+
+
+# Question 1
+
+We're going to write a simple function here to perform a proportion test, for one or two samples, both one/two tailed, in either direction.
+
+```{r, zprop_test}
+Z.prop.test <- function(p1, n1, p0, alternative = "two.sided", p2 = NULL, n2 = NULL, conf.level = 0.95){ 
+  # note we use equals inside functions
+  result_list <- NULL # just initializing some things\
+  
+  test_stat = NULL # Initialize some more vectors
+  p_value = NULL
+  conf_interval = NULL
+  alpha = (1 - conf.level)/2
+  
+  # two sample situation
+  if (is.null(p2) == F & is.null(n2) == F){
+    if((((n1*p1 < 5) | ((1-p1) * n1 < 5)) | ((n2*p2 < 5) | ((1-p2) * n2 < 5)))){
+    print("Warning! Model assumptions not met, caution against interpretations") 
+    }
+    phat = ((p1*n1) + (p2*n2))/(n1 + n2) # the Ph in Ph.D stands for Phat
+    # under null proportions are the same
+    test_stat_var = (phat *(1-phat)) * ((1/n1) +(1/n2)) # variance formula
+    test_stat = (p2 - p1)/(sqrt(test_stat_var)) # test stat is the same regardless of alternative 
+    conf_interval = c((p2-p1) + (qnorm(alpha/2) * sqrt(test_stat_var)),(p2-p1) + (qnorm(1 - alpha/2) * sqrt(test_stat_var)))
+    # not messing around with one-sided conf.intervals not in this house
+    if (alternative == "two.sided"){
+      if (p2 >= p1){ # then our test_stat is nonnegative 
+        p_value = 2 * pnorm(p2-p1, mean = 0, sd = sqrt(test_stat_var), lower.tail = F) # two sided is just 2* one-sided
+      }
+      if(p2 < p1){ # then our test_stat is negative
+        p_value = 2 * pnorm(p2-p1, mean = 0, sd = sqrt(test_stat_var), lower.tail = T)
+      }
+    }
+    if (alternative == "greater"){ # then we're checking p2 > p1
+      p_value = pnorm(p2-p1, mean = 0, sd = sqrt(test_stat_var), lower.tail = F)
+    }
+    if (alternative == "less"){ # then p2 < p1 
+      p_value = pnorm(p2-p1, mean = 0, sd = sqrt(test_stat_var), lower.tail = T)
+    }
+  }
+  # one sample situation
+  if (is.null(p2) == T | is.null(n2) == T){ # the same logic as above for two-sample
+    if((n1*p1 < 5) | ((1-p1) * n1 < 5)){
+    print("Warning! Model assumptions not met, caution against interpretations")
+    }
+    test_stat_var = (p0 * (1-p0)/n1)
+    test_stat = (p1 - p0)/sqrt(test_stat_var)
+    conf_interval = c((p1-p0) + (qnorm(alpha/2) * sqrt(test_stat_var)), (p1-p0) + (qnorm(1 -alpha/2) * sqrt(test_stat_var)))
+    if (alternative == "two.sided"){
+      if (p1 >= p0){ # then our test_stat is nonnegative 
+        p_value = 2 * pnorm(p1, mean = p0, sd = sqrt(test_stat_var), lower.tail = F) # two sided is just 2* one-sided
+      }
+      if(p1 < p0){ # then our test_stat is negative
+        p_value = 2 * pnorm(p1, mean = p0, sd = sqrt(test_stat_var), lower.tail = T)
+      }
+    }
+    if (alternative == "greater"){ # then we're checking p2 > p1
+      p_value = pnorm(p1, mean = p0, sd = sqrt(test_stat_var), lower.tail = F)
+    }
+    if (alternative == "less"){ # then we're checking p2 < p1
+      p_value = pnorm(p1, mean = p0, sd = sqrt(test_stat_var), lower.tail = T)
+    }
+  }
+  result_list = list(test_stat, p_value, conf_interval)
+    
+  return(result_list)
+}
+```
+
+Let's test it out!
+
+```{r, proptests}
+# one sample
+Z.prop.test(p1 = 0.5, n1 = 20, p0 = 0.6) # does it work
+Z.prop.test(p1 = 0.5, n1 = 5, p0 = 0.6) # does error message show?
+Z.prop.test(p1 = 0.5, n1 = 5, p0 = 0.6, conf.level = 0.5) # we're really not confident lol
+Z.prop.test(p1 = 0.5, n1 = 5, p0 = 0.6, alternative = "less") # does alternative work?
+
+# two sample
+Z.prop.test(p1 = 0.5, n1 = 10, p2 = 0.5, n2 = 10) # yeah it works
+Z.prop.test(p1 = 0.5, n1 = 20, p2 = 0.1, n2 = 30)
+Z.prop.test(p1 = 0.5, n1 = 20, p2 = 0.1, n2 = 30, alternative = "less")
+Z.prop.test(p1 = 0.5, n1 = 20, p2 = 0.1, n2 = 30, conf.level = 0.5)
+```
+
+# Question 2
+
+We're going to work a simple linear regression using `lm()`, it's going to be beautiful.
+
+```{r, parts12}
+kamilar <- read_csv(curl("https://raw.githubusercontent.com/fuzzyatelin/fuzzyatelin.github.io/master/AN588_Fall21/KamilarAndCooperData.csv")) %>% filter(is.na(Brain_Size_Species_Mean) == F & is.na(MaxLongevity_m) == F); head(kamilar) # load in data
+
+# create the model
+kamilarmodel <- lm(MaxLongevity_m ~ Brain_Size_Species_Mean, data = kamilar); summary(kamilarmodel)
+
+# let's add some data for the sake of actually doing something
+kamilar <- kamilar %>% mutate(linear_model = predict(kamilarmodel, kamilar))
+
+kamilar %>% ggplot(aes(x = Brain_Size_Species_Mean, y = MaxLongevity_m)) +
+  geom_point(color = "steelblue") + # this is the best R plot color <3
+  geom_line(aes(x = Brain_Size_Species_Mean, y = linear_model), 
+            color = "red", size = 1.5, alpha = 0.75) +
+  geom_label(aes(x = 300, y = 200, label = "E[Max_Longevity] = 248.95 + 1.21(Brain_Size_Species_Mean)")) +
+  xlab("Species Average Brain Size") +
+  ylab("Species Average Max Longevity") +
+  ggtitle("Max Longevity ~ Brain Size")
+
+# this is the same stuff as above but w log
+log_kamilar <- lm(MaxLongevity_m ~ log(Brain_Size_Species_Mean), data = kamilar); summary(log_kamilar)
+kamilar <- kamilar %>% mutate(log_linear_model = predict(log_kamilar, kamilar))
+kamilar %>% ggplot(aes(x = log(Brain_Size_Species_Mean), y = MaxLongevity_m)) +
+  geom_point(color = "steelblue") + # this is the best R plot color <3
+  geom_line(aes(x = log(Brain_Size_Species_Mean), y = log_linear_model), 
+            color = "red", size = 1.5, alpha = 0.75) +
+  geom_label(aes(x = 4, y = 20, label = "E[Max_Longevity] = 65.9 + 72.9(log(Brain_Size_Species_Mean))")) +
+  xlab("log(Species Average Brain Size)") +
+  ylab("Species Average Max Longevity") +
+  ggtitle("Max Longevity ~ log(Brain Size)")
+```
+
+Let's interpret our terms! As the average brain size per species increases by 1, the estimated (not predicted!) average max longevity increases by 1.21 units! p < 2.2e-16, hence we have significant evidence to reject the null hypothesis that the slope value is 0. We have significant evidence there is a linear relationship between average species brain size and maximum longevity!
+\
+\
+For the log data, as log(average brain size per species) increases by 1, the estimated average mmax longevity increases by 72.859 units. p < 2.2e-16 hence we have significant evidence to reject the null hypotehsis that the slope value is 0. There is a linear relationship between log(average species brain size) and maximum longevity!
+
+```{r, q2plots}
+kamilarconf90 <- predict(kamilarmodel, # first we need to generate our prediciton and confidence intervlas
+                         new_data = as.data.frame(Brain_Size_Species_Mean = kamilar$Brain_Size_Species_Mean), 
+                         interval = "conf", level = 0.9) %>% as.data.frame()
+kamilarpred90 <- predict(kamilarmodel, 
+                         new_data = as.data.frame(Brain_Size_Species_Mean = kamilar$Brain_Size_Species_Mean),
+                         interval = "pred", level = 0.9) %>% as.data.frame()
+logkamilarconf90 <- predict(log_kamilar, 
+                         new_data = as.data.frame(logBrain_Size_Species_Mean = kamilar$Brain_Size_Species_Mean), 
+                         interval = "conf", level = 0.9) %>% as.data.frame()
+logkamilarpred90 <- predict(log_kamilar, 
+                         new_data = as.data.frame(logBrain_Size_Species_Mean = kamilar$Brain_Size_Species_Mean),
+                         interval = "pred", level = 0.9) %>% as.data.frame()
+                         
+kamilar <- kamilar %>% mutate(lwrCI90 = kamilarconf90$lwr, # i like tidyverse mroe than base r, 
+                              # add all our dudes to the same df
+                              uprCI90 = kamilarconf90$upr,
+                              lwrpred90 = kamilarpred90$lwr,
+                              uprpred90 = kamilarpred90$upr,
+                              loglwrCI90 = logkamilarconf90$lwr,
+                              loguprCI90 = logkamilarconf90$upr,
+                              loglwrpred90 = logkamilarpred90$lwr,
+                              loguprpred90 = logkamilarpred90$upr)
+
+colors <- c("Confidence Interval" = "blue", "Prediction Interval" = "orange") # make color key
+
+
+kamilar %>% ggplot(aes(x = Brain_Size_Species_Mean, y = MaxLongevity_m)) + # plot for non log
+  geom_point(color = "steelblue") + # this is the best base R color <3
+  geom_line(aes(x = Brain_Size_Species_Mean, y = linear_model), 
+            color = "red", size = 1.5, alpha = 0.75) +
+  geom_line(aes(x = Brain_Size_Species_Mean, y = lwrCI90, color = "Confidence Interval")) +
+  geom_line(aes(x = Brain_Size_Species_Mean, y = uprCI90, color = "Confidence Interval")) +
+  geom_line(aes(x = Brain_Size_Species_Mean, y = lwrpred90, color = "Prediction Interval")) +
+  geom_line(aes(x = Brain_Size_Species_Mean, y = uprpred90, color = "Prediction Interval")) +
+  xlab("Species Average Brain Size") +
+  ylab("Species Average Max Longevity") +
+  ggtitle("Max Longevity ~ Brain Size") +
+  scale_color_manual(values = colors)
+
+kamilar %>% ggplot(aes(x = log(Brain_Size_Species_Mean), y = MaxLongevity_m)) + # plot for non log
+  geom_point(color = "steelblue") + # this is the best base R  color <3
+  geom_line(aes(x = log(Brain_Size_Species_Mean), y = log_linear_model), 
+            color = "red", size = 1.5, alpha = 0.75) +
+  geom_line(aes(x = log(Brain_Size_Species_Mean), y = loglwrCI90, color = "Confidence Interval")) +
+  geom_line(aes(x = log(Brain_Size_Species_Mean), y = loguprCI90, color = "Confidence Interval")) +
+  geom_line(aes(x = log(Brain_Size_Species_Mean), y = loglwrpred90, color = "Prediction Interval")) +
+  geom_line(aes(x = log(Brain_Size_Species_Mean), y = loguprpred90, color = "Prediction Interval")) +
+  xlab("Species Average Brain Size") +
+  ylab("Species Average Max Longevity") +
+  ggtitle("Max Longevity ~ Brain Size") +
+  scale_color_manual(values = colors)
+```
+
+Point estimates!
+
+```{r, pt_estim}
+norm_pt_estim <- predict(kamilarmodel, newdata = data.frame(Brain_Size_Species_Mean = c(800)), 
+                       interval = "conf", level = 0.95); norm_pt_estim # we're going to do point esitmates
+log_pt_estim <- predict(log_kamilar, newdata = data.frame(Brain_Size_Species_Mean = c(800)),
+                        interval = "conf", level = 0.95); log_pt_estim
+```
+
+The log transformed point estimate is easily more plausible than the non-transformed linear model. Of the two models, the log transformed model is much preferred since the non-transformed data appears nonlinear (it looks like a logarithmic function). 
